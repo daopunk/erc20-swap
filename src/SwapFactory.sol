@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {ITokenPair} from "@interfaces/TokenPair.sol";
+import {ITokenPair} from "@interfaces/ITokenPair.sol";
+import {Ownable2Step} from "@openzeppelin/access/Ownable2Step.sol";
 
-contract SwapFactory {
+contract SwapFactory is Ownable2Step {
     error IndeticalTokens();
     error ZeroAddress();
     error PairExists();
 
-    mapping(address tokenA => mapping(address tokenB => address pair)) public getPair;
+    address public feeCollector;
+
+    mapping(address t0 => mapping(address t1 => address pair)) public getPair;
 
     event PairCreated(address indexed t0, address indexed t1, address pair);
+
+    constructor(address _feeCollector) {
+        require(_feeCollector != address(0));
+        feeCollector = _feeCollector;
+    }
 
     function deployPair(address tokenA, address tokenB) external returns (address pair) {
         if (tokenA == tokenB) revert IndeticalTokens();
