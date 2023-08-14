@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
 import {ISwapFactory} from "@interfaces/ISwapFactory.sol";
 import {ISwapCallee} from "@interfaces/ISwapCallee.sol";
 import {UQ112xUQ112} from "@library/UQ112xUQ112.sol";
+import {Math} from "@library/Math.sol";
 import {LpToken} from "src/LpToken.sol";
 
 /**
@@ -156,18 +157,5 @@ contract TokenPair is LpToken, ReentrancyGuard {
                 if (liquidity > 0) _mint(feeCollector, liquidity);
             }
         }
-    }
-
-    function _sqrt(uint256 x) internal returns (uint256 y) {
-        uint256 z = (x + 1) / 2;
-        y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
-        }
-    }
-
-    function _min(uint256 x, uint256 y) internal pure returns (uint256) {
-        return x < y ? x : y;
     }
 }
