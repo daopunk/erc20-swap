@@ -79,7 +79,7 @@ contract TokenPair is LpToken, ReentrancyGuard {
         if (liquidity < 1) revert InsuffLiq();
         _mint(to, liquidity);
         _update(bal0, bal1, rt0, rt1);
-        lastK = uint256(rt0) * uint256(rt1);
+        lastK = uint256(_rt0) * uint256(_rt1);
         emit Mint(msg.sender, amount0, amount1);
     }
 
@@ -98,7 +98,7 @@ contract TokenPair is LpToken, ReentrancyGuard {
         IERC20(t1).safeTransfer(to, amount1);
         (bal0, bal1) = _getBal();
         _update(bal0, bal1, rt0, rt1);
-        lastK = uint256(rt0) * uint256(rt1);
+        lastK = uint256(_rt0) * uint256(_rt1);
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
