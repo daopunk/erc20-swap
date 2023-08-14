@@ -1,1 +1,3 @@
 @interfaces/=src/interfaces/
+
+@openzeppelin/=lib/openzeppelin-contracts/contracts/
