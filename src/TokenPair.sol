@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {ReentracyGuard} from "@openzeppelin/security/ReentracyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/security/ReentracyGuard.sol";
 import {SafeERC20} from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
 import {ISwapFactory} from "@interfaces/ISwapFactory.sol";

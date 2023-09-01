@@ -2,6 +2,7 @@
 pragma solidity 0.8.19;
 
 import {ITokenPair} from "@interfaces/ITokenPair.sol";
+import {TokenPair} from "src/TokenPair.sol";
 import {Ownable2Step} from "@openzeppelin/access/Ownable2Step.sol";
 
 contract SwapFactory is Ownable2Step {
