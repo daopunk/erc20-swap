@@ -1,4 +1,4 @@
 @interfaces/=src/interfaces/
 @library/=src/library/
-
 @openzeppelin/=lib/openzeppelin-contracts/contracts/
+@solady/=lib/solady/src
