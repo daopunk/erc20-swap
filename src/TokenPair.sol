@@ -8,32 +8,24 @@ import {IERC3156FlashLender} from "@openzeppelin/interfaces/IERC3156FlashLender.
 import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
 import {ISwapFactory} from "@interfaces/ISwapFactory.sol";
 import {ISwapCallee} from "@interfaces/ISwapCallee.sol";
-// import {UQ112xUQ112} from "@library/UQ112xUQ112.sol";
+import {ITokenPair} from "@interfaces/ITokenPair.sol";
+import {UQ112x112} from "@library/UQ112x112.sol";
 import {Math} from "@library/Math.sol";
 import {LpToken} from "src/LpToken.sol";
 import {FixedPointMathLib} from "@solady/utils/FixedPointMathLib.sol";
 
-contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
+contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    // using UQ112x112 for uint224;
-
-    error InsuffLiq();
-    error InsuffLiqBurn();
-    error InsuffSwap();
-    error InvalidDst();
-    error InvalidAmount();
-    error InvalidK();
-    error InvalidToken();
-    error NotAuth();
-    error Initialized();
+    using UQ112x112 for uint224;
 
     uint256 public constant MIN_LIQ = 10 ** 3;
     uint256 public constant FEE = 1; //  1 == 0.01 % for flashloan
     bytes32 public constant CALLBACK_SUCCESS = keccak256("ERC3156FlashBorrower.onFlashLoan");
 
     address public immutable factory;
-    address public immutable token0;
-    address public immutable token1;
+
+    address public token0;
+    address public token1;
 
     uint112 private _reserveToken0;
     uint112 private _reserveToken1;
@@ -64,8 +56,8 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
         _;
     }
 
-    modifier initializer(address token) {
-        if (token != address(0)) revert Initialized();
+    modifier initializer() {
+        if (token0 != address(0)) revert Initialized();
         if (msg.sender != factory) revert NotAuth();
         _;
     }
@@ -73,7 +65,7 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
     /**
      * @dev initialize immutable token pair addresses
      */
-    function initialize(address _t0, address _t1) external initializer(_t0) {
+    function initialize(address _t0, address _t1) external initializer {
         token0 = _t0;
         token1 = _t1;
     }
@@ -102,16 +94,12 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
     {
         if (amount == 0) revert InvalidAmount();
         uint256 fee = _flashFee(amount);
-        IERC20(token).transfer(to, amount);
-        (address(receiver), amount);
+        IERC20(token).transfer(address(receiver), amount);
         require(
             receiver.onFlashLoan(msg.sender, token, amount, fee, data) == CALLBACK_SUCCESS,
             "FlashMinter: Callback failed"
         );
-        require(
-            IERC20(token).transferFrom(address(receiver), address(this), amount + flashFee_),
-            "FlashLender: Repay failed"
-        );
+        require(IERC20(token).transferFrom(address(receiver), address(this), amount + fee), "FlashLender: Repay failed");
         (uint256 bal0, uint256 bal1) = _getBal();
         (uint112 rt0, uint112 rt1,) = getReserves();
         _update(bal0, bal1, rt0, rt1);
@@ -127,10 +115,10 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
 
         uint256 t = totalSupply();
         if (t == 0) {
-            liquidity = _sqrt(amount0 * amount1) - MIN_LIQ;
+            liquidity = Math._sqrt(amount0 * amount1) - MIN_LIQ;
             _mint(address(0), MIN_LIQ);
         } else {
-            liquidity = _min(amount0 * t / rt0, amount1 * t / rt1);
+            liquidity = Math._min(amount0 * t / rt0, amount1 * t / rt1);
         }
         if (liquidity < 1) revert InsuffLiq();
         _mint(to, liquidity);
@@ -142,7 +130,7 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
     function burn(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
         (uint112 rt0, uint112 rt1,) = getReserves();
         (uint256 bal0, uint256 bal1) = _getBal();
-        uint256 liquidity = balanceOf[address(this)];
+        uint256 liquidity = balanceOf(address(this));
         _mintFee(rt0, rt1);
 
         uint256 t = totalSupply();
@@ -165,14 +153,15 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
         (uint112 rt0, uint112 rt1,) = getReserves();
 
         if (amountOut0 > rt0 || amountOut1 > rt1) revert InsuffLiq();
-        if (to == token0 || to == token1) revert InvalidDst();
 
-        address t0 = token0;
-        address t1 = token1;
-
-        // optimistic transfer
-        if (amountOut0 > 0) IERC20(t0).safeTransfer(to, amountOut0);
-        if (amountOut1 > 0) IERC20(t1).safeTransfer(to, amountOut1);
+        {
+            address t0 = token0;
+            address t1 = token1;
+            if (to == t0 || to == t1) revert InvalidDst();
+            // optimistic transfer
+            if (amountOut0 > 0) IERC20(t0).safeTransfer(to, amountOut0);
+            if (amountOut1 > 0) IERC20(t1).safeTransfer(to, amountOut1);
+        }
 
         // update balances
         (uint256 bal0, uint256 bal1) = _getBal();
@@ -189,7 +178,7 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
         }
         // update reserves, emit event
         _update(bal0, bal1, rt0, rt1);
-        emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+        emit Swap(msg.sender, amountIn0, amountIn1, amountOut0, amountOut0, to);
     }
 
     /**
@@ -204,7 +193,7 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
         return (_reserveToken0, _reserveToken1, _lastTimestamp);
     }
 
-    function _getBal() internal returns (uint256, uint256) {
+    function _getBal() internal view returns (uint256, uint256) {
         return (IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
     }
 
@@ -228,8 +217,8 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
 
         if (k != 0) {
             // calc sqroot of reserves / calc sqroot of last K
-            uint256 rootK = Math.sqrt(uint256(rt0) * uint256(rt1));
-            uint256 rootKLast = Math.sqrt(k);
+            uint256 rootK = Math._sqrt(uint256(rt0) * uint256(rt1));
+            uint256 rootKLast = Math._sqrt(k);
 
             if (rootK > rootKLast) {
                 uint256 numerator = totalSupply() * (rootK - rootKLast);
@@ -245,7 +234,7 @@ contract TokenPair is IERC3156FlashLender, LpToken, ReentrancyGuard {
     /**
      * @dev fee charged on principal loan
      */
-    function _flashFee(uint256 amount) internal view returns (uint256 fee) {
+    function _flashFee(uint256 amount) internal pure returns (uint256 fee) {
         fee = amount * FEE / 10000;
     }
 }

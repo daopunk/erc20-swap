@@ -2,7 +2,7 @@
 pragma solidity 0.8.19;
 
 library Math {
-    function _sqrt(uint256 y) internal returns (uint256 z) {
+    function _sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y < 4) {
             z = 1;
         } else {
