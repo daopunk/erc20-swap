@@ -9,14 +9,15 @@ import {IERC20} from "@openzeppelin/token/ERC20/IERC20.sol";
 import {ISwapFactory} from "@interfaces/ISwapFactory.sol";
 import {ISwapCallee} from "@interfaces/ISwapCallee.sol";
 import {ITokenPair} from "@interfaces/ITokenPair.sol";
-import {UQ112x112} from "@library/UQ112x112.sol";
+// import {UQ112x112} from "@library/UQ112x112.sol";
 import {Math} from "@library/Math.sol";
 import {LpToken} from "src/LpToken.sol";
 import {FixedPointMathLib} from "@solady/utils/FixedPointMathLib.sol";
 
 contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    using UQ112x112 for uint224;
+    // using UQ112x112 for uint224;
+    using FixedPointMathLib for uint256;
 
     uint256 public constant MIN_LIQ = 10 ** 3;
     uint256 public constant FEE = 1; //  1 == 0.01 % for flashloan
@@ -106,11 +107,17 @@ contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard 
         return true;
     }
 
+    /**
+     * @dev deposit/provide liquidity, recieve LpToken
+     */
     function mint(address to) external nonReentrant returns (uint256 liquidity) {
+        // calc liquidity provided by subtracting reserves from token balances
         (uint112 rt0, uint112 rt1,) = getReserves();
         (uint256 bal0, uint256 bal1) = _getBal();
         uint256 amount0 = bal0 - rt0;
         uint256 amount1 = bal1 - rt1;
+
+        // mint protocol fee
         _mintFee(rt0, rt1);
 
         uint256 t = totalSupply();
@@ -127,6 +134,9 @@ contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard 
         emit Mint(msg.sender, amount0, amount1);
     }
 
+    /**
+     * @dev repay LpToken, withdraw liquidity
+     */
     function burn(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
         (uint112 rt0, uint112 rt1,) = getReserves();
         (uint256 bal0, uint256 bal1) = _getBal();
@@ -148,6 +158,9 @@ contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard 
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
+    /**
+     * @dev trade token pair
+     */
     function swap(uint256 amountOut0, uint256 amountOut1, address to) external nonReentrant {
         if (amountOut0 == 0 && amountOut1 == 0) revert InsuffSwap();
         (uint112 rt0, uint112 rt1,) = getReserves();
@@ -182,28 +195,41 @@ contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard 
     }
 
     /**
-     * @dev update reserves
+     * @dev update reserve information
      */
     function sync() external nonReentrant {
         (uint256 bal0, uint256 bal1) = _getBal();
         _update(bal0, bal1, _reserveToken0, _reserveToken1);
     }
 
+    /**
+     * @dev get reserve balances of reserve0, reserve1
+     */
     function getReserves() public view returns (uint112, uint112, uint32) {
         return (_reserveToken0, _reserveToken1, _lastTimestamp);
     }
 
+    /**
+     * @dev get token balances of token0, token1
+     */
     function _getBal() internal view returns (uint256, uint256) {
         return (IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
     }
 
+    /**
+     * @dev get token balances of token0, token1
+     */
     function _update(uint256 bal0, uint256 bal1, uint112 rt0, uint112 rt1) internal {
         uint32 currTimestamp = uint32(block.timestamp % 2 ** 32);
         uint32 timeElapsed = currTimestamp - _lastTimestamp;
 
         if (timeElapsed > 0 && rt0 != 0 && rt1 != 0) {
-            lastCumuPrice0 += uint256(UQ112x112.encode(rt1).uqdiv(rt0)) * timeElapsed;
-            lastCumuPrice1 += uint256(UQ112x112.encode(rt0).uqdiv(rt1)) * timeElapsed;
+            // lastCumuPrice0 += uint256(UQ112x112.encode(rt1).uqdiv(rt0)) * timeElapsed;
+            // lastCumuPrice1 += uint256(UQ112x112.encode(rt0).uqdiv(rt1)) * timeElapsed;
+
+            // ry = r1 * r2 / S
+            lastCumuPrice0 += uint256(rt1).divWad(rt0) * timeElapsed;
+            lastCumuPrice1 += uint256(rt0).divWad(rt1) * timeElapsed;
         }
         _reserveToken0 = uint112(bal0);
         _reserveToken1 = uint112(bal1);
@@ -211,6 +237,9 @@ contract TokenPair is ITokenPair, IERC3156FlashLender, LpToken, ReentrancyGuard 
         emit Sync(_reserveToken0, _reserveToken1);
     }
 
+    /**
+     * @dev fee collected by protocol from liquidity providers
+     */
     function _mintFee(uint112 rt0, uint112 rt1) internal {
         address feeCollector = ISwapFactory(factory).feeCollector();
         uint256 k = lastK;
